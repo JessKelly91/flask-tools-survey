@@ -6,7 +6,7 @@
     <h1>{{survey.title}}</h1>
     <h2> {{question.question}} </h2>
 
-    <form method="POST">
+    <form action="/answer" method="POST">
         {% for choice in question.choices %}
 
         <label>

@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, flash
+from flask import Flask, request, render_template, redirect, flash, session
 from flask_debugtoolbar import DebugToolbarExtension
 from surveys import satisfaction_survey
 
@@ -10,8 +10,7 @@ app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 
 toolbar = DebugToolbarExtension(app)
 
-
-responses = []
+RESPONSES_KEY = "responses"
 
 @app.route('/')
 def show_start():
@@ -22,36 +21,58 @@ def show_start():
 
    return render_template('start.html', survey = satisfaction_survey)
 
-@app.route('/start_survey')
+@app.route('/start_survey', methods=["POST"])
 def start_survey():
    """Clear current responses and redirect to first question"""
 
-   responses = []
+   session[RESPONSES_KEY] = []
 
    return redirect("/questions/0")
-    
 
-@app.route('/questions/<int:question_id>', methods=['GET', 'POST'])
+@app.route('/answer', methods=["POST"])
+def handle_responses():
+   """Saves responses and redirects to next questions/thank you page"""
+
+   #extract answer from form
+   answer = request.form['answer']
+   
+   #add answer to session
+   responses = session[RESPONSES_KEY]
+   responses.append(answer)
+   session[RESPONSES_KEY] = responses
+
+   if (len(responses) == len(satisfaction_survey.questions)):
+      #survey is complete
+      return redirect('/thanks')
+   else:
+      #otherwise move to next question
+      return redirect(f'/questions/{len(responses)}')
+
+   
+
+@app.route('/questions/<int:question_id>')
 def show_questions(question_id):
    """retrieves questions from survey instance and displays current question on screen
    """
-   #handle the click of continue button
-   if request.method == "POST":
-      #append the current answer to the responses list
-      if question_id < len(satisfaction_survey.questions):
-         answer = request.form['answer']
-         responses.append(answer)
+   responses = session.get(RESPONSES_KEY)
 
-         #go to next question
-         question_id += 1 
-         return redirect(f'/questions/{question_id}')
+   if (responses is None):
+      #accessing page too soon
+      return redirect('/')
 
-   #make sure question_id is within valid range + display
-   if 0 <= question_id < len(satisfaction_survey.questions):
-      question = satisfaction_survey.questions[question_id]
-      return render_template('questions.html', question = question, question_id = question_id, survey = satisfaction_survey)
-   elif question_id >= len(satisfaction_survey.questions):
-      return redirect("/thanks")
+   if question_id != len(responses):
+      #trying to access questions out of order
+      flash('Please complete the survey questions in order.')
+      
+      return redirect(f'/questions/{len(responses)}')
+   
+   if (len(responses) == len(satisfaction_survey.questions)):
+      #survey is complete
+      return redirect('/thanks')
+   
+   question = satisfaction_survey.questions[question_id]
+
+   return render_template('questions.html', question_num = question_id, question = question, survey = satisfaction_survey)
 
 @app.route('/thanks')
 def complete_survey():
